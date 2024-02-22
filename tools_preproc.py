@@ -5,7 +5,6 @@ import numba as nb
 import matplotlib.pyplot as plt
 import math
 
-pix_check = 2048*(np.array([42,45,47,139,799])-1) + np.array([498,498,498,540,540])-1
 
 def table(fichier, fin):
     fit = fits.open(fichier)
@@ -24,25 +23,35 @@ def table_simu(fichier, fin):
     return (tab)
 
 
-def PixSat(image, sat, fin, indref):
-    # POM_FRN_SAT = carteP
-
+def PixSat(image, sat, N, indref):
+    """
     PixSat = np.argwhere(image[fin - 1, :] >= sat)
-
     FrameSat = np.sum(np.where(image < sat, 1, 0),axis=0)
     carteP = np.zeros(2048 * 2048)
     carteP[PixSat] = FrameSat[PixSat]+1
     carteP[indref] = 1
-
-    return (carteP)
+    """
+    PixSat = np.argwhere(image[N - 1, :] > sat)
+    prev = np.array([True for i in range(2048*2048)])
+    indMax = np.asarray([0 for i in range(2048*2048)])
+    for i in range(N):
+        img = np.int64(np.ravel(image[i]))
+        indSat = np.where((img > sat) & prev)[0]
+        indMax[indSat] = i+1
+        prev[indSat] = False
+    indMax[indref] = 1
+    return indMax
 
 
 def PlageFit(image, sat70, N, indref):
-    # Trouver les max de chaque pixel et leurs valeurs
-    
-    indMax = np.sum(np.where(image < sat70, 1, 0), axis=0)
-    indMax[indref] = N
-    return (indMax)
+    prev = np.array([True for i in range(2048*2048)])
+    indMax = np.asarray([N for i in range(2048*2048)])
+    for i in range(N):
+        img = np.ravel(image[i])
+        indSat = np.where((img > sat70) & prev)[0]
+        indMax[indSat] = i
+        prev[indSat] = False
+    return indMax
 
 
 def tableau3D(fichier, fin):
@@ -50,7 +59,7 @@ def tableau3D(fichier, fin):
     tab = np.zeros([fin, 2048, 2048])
     for i in range(1, fin + 1):
         a = fit[i].data
-        tab[i - 1] = (a).astype(np.int32)
+        tab[i - 1] = (a).astype(np.int64)
     return (tab)
 
 
@@ -60,7 +69,7 @@ def tableau3D_simu(fichier, fin):
     tab = np.zeros([fin, 2048, 2048])
     for i in range(0, fin):
         a = f[i, :, :]
-        tab[i] = (a).astype(np.int32)
+        tab[i] = (a).astype(np.int64)
     return (tab)
 
 
@@ -68,23 +77,10 @@ def correctionC(image):
     # creation d'un masque  pour selectionner les colonnes des pixels de référence
     l = [1, 2, 2045, 2046]
 
-    # print('mean',np.nanmean(image[0, l, 0:64]))
-
     # on découpe l'image en 32 voies et on calcul la médiane à appliquer sur chaque voie avec le masque
     split = np.split(image[:, l, :], 32, axis=2)  # *masque
 
-    # image[:, l, :] = 0
-
-    '''plt.figure('test image')
-    plt.imshow(image[0])
-    plt.show()'''
-
-    # print(np.shape(image),np.shape(split))
     Corr = np.nanmean(split, axis=(2, 3))
-    # print(np.shape(Corr))
-
-    '''plt.figure('test')
-    plt.plot(np.mean(Corr,axis=0))'''
 
     del split
     Corr = np.transpose(Corr)
@@ -96,34 +92,8 @@ def correctionC(image):
     del C
     del axe
 
-    # print(np.shape(Corr),Corr[0,0,0:64])
-    '''plt.figure('correctif colonnes diff')
-    plt.imshow(Corr[1]-Corr[0], vmin = np.quantile(Corr[1]-Corr[0],0.1),vmax = np.quantile(Corr[1]-Corr[0],0.9))
-    plt.title('correctif colonnes')
-
-    plt.figure('correctif colonnes 1')
-    plt.imshow(Corr[1] , vmin=np.quantile(Corr[1] , 0.1), vmax=np.quantile(Corr[1] , 0.9))
-    plt.title('correctif colonnes')
-    plt.figure('correctif colonnes 0')
-    plt.imshow(Corr[0], vmin=np.quantile(Corr[0], 0.1), vmax=np.quantile(Corr[0], 0.9))
-    plt.title('correctif colonnes')'''
-
-    '''plt.figure('image 40-3')
-    plt.imshow(image[1] - image[3], vmin = np.quantile(image[40] - image[3],0.1), vmax = np.quantile(image[40] - image[3],0.9))
-    plt.title('image')
-    plt.figure('image1')
-    plt.imshow(image[1],vmin = np.quantile(image[1],0.1),vmax = np.quantile(image[1],0.9))
-    plt.colorbar(label='signal [ADU]')'''
-
     # image corrigée sur les colonnes
     Colonnes_Cor = image - Corr
-
-    '''plt.figure('image3 corr')
-    plt.imshow(Colonnes_Cor[1], vmin=np.quantile(Colonnes_Cor[1], 0.1), vmax=np.quantile(Colonnes_Cor[1], 0.9))
-    plt.show()'''
-    '''plt.figure('image40 - 3 corr')
-    plt.imshow(Colonnes_Cor[40]-Colonnes_Cor[3], vmin=np.quantile(Colonnes_Cor[40]-Colonnes_Cor[3], 0.1), vmax=np.quantile(Colonnes_Cor[40]-Colonnes_Cor[3], 0.9))'''
-
     del Corr
     del image
 
@@ -136,14 +106,8 @@ def correctionL(image, NBLFG):
 
     # ATTENTION, CETTE FONCTION N'EST ICI PAS ADAPTÉE SI ON CHANGE NBLFG : A AJUSTER
 
-    # image[:, 1:10, c] = 0
     image[:, (20 - NBLFG):(20 + NBLFG + 1), c] = 0
-    # print(np.mean(image[0, 1:10, c]))
-    # print(np.mean(image[0,(7 - NBLFG):(7 + NBLFG+1), c]))
 
-    '''plt.figure('test image')
-    plt.imshow(image[0])
-    plt.show()'''
 
     # création d'un masque et calcul des moyennes des 3 lignes au dessus et au dessous de la ligne considérée
     CorrL = [(np.nanmean(image[:, 1:10, c], axis=(1, 2)))]
@@ -163,8 +127,6 @@ def correctionL(image, NBLFG):
     CorrL += [(np.nanmean(image[:, 2038:2047, c], axis=(1, 2)))]
     CorrL = np.array(CorrL)
 
-    '''plt.figure('test')
-    plt.plot(np.mean(CorrL, axis=0))'''
 
     # création d'une cartographie des correction
     CorrL = CorrL[:, :, np.newaxis]
@@ -173,32 +135,7 @@ def correctionL(image, NBLFG):
     CorrL = np.moveaxis(Corr, 1, 0)
     CorrL[np.isnan(CorrL)] = 0
 
-    # print(CorrL[0,2,50])
-    # print(CorrL[0, 2, 150])
-    # print(CorrL[0, 7, 50])
-    # print(CorrL[0, 7, 150])
-
-    '''plt.figure('correctif lignes')
-    plt.imshow(CorrL[40] - CorrL[3], vmin=np.quantile(CorrL[40] -CorrL[3], 0.1), vmax=np.quantile(CorrL[40] -CorrL[3], 0.9))
-    plt.title('correctif colonnes')
-
-    plt.figure('image 40-3')
-    plt.imshow(image[4] - image[3], vmin=np.quantile(image[40] - image[3], 0.1),
-               vmax=np.quantile(image[40] - image[3], 0.9))
-    plt.title('image')
-
-    plt.figure('image3')
-    plt.imshow(image[3], vmin=np.quantile(image[3], 0.1), vmax=np.quantile(image[3], 0.9))'''
-
     lignes_cor = image - CorrL
-
-    '''plt.figure('image3 corrL')
-    plt.imshow(lignes_cor[3], vmin=np.quantile(lignes_cor[3], 0.1), vmax=np.quantile(lignes_cor[3], 0.9))
-
-    plt.figure('image40 - 3 corrL')
-    plt.imshow(lignes_cor[40] - lignes_cor[3], vmin=np.quantile(lignes_cor[40] - lignes_cor[3], 0.1),
-               vmax=np.quantile(lignes_cor[40] - lignes_cor[3], 0.9))'''
-    # plt.show()
 
     del CorrL
 
@@ -224,7 +161,7 @@ def rampeCDS(image, fin):
     return (imCDS)
 
 
-def FitCosmic(image, indSat, d, chemin_alpha, sat, framesat, CR_VARJ, CR_VMRJ, CR_THRJ, NBFRMIN, indv):
+def FitCosmic(image, indSat, d, alpha, sat, framesat, CR_VARJ, CR_VMRJ, CR_THRJ, NBFRMIN, indv):
     PixaTraiter = indv
     cos = []
     im = image.copy()
@@ -238,17 +175,14 @@ def FitCosmic(image, indSat, d, chemin_alpha, sat, framesat, CR_VARJ, CR_VMRJ, C
     POM_NBF_FIT = np.zeros(2048 * 2048)
 
     # on prend ici un coef de non linéarité à partir d'un fichier de carac  / ou le fichier test pour ratir
-    al = fits.getdata(chemin_alpha)
-    alpha = np.ravel(al)
     
     Ac, Bc, Cc, Ncc = [np.zeros(2048 * 2048) for i in range(4)]
     
     for i in np.unique(indSat):
-        if i - NBFRMIN > 0:
+        if i - NBFRMIN >= 0:
             pix_isat = np.intersect1d(np.argwhere(indSat == i), PixaTraiter)
             pix_isat = pix_isat[:, np.newaxis]
-            longueur = (np.arange(d, i)).astype(np.int64)
-            # print('i',i,np.shape(im))
+            longueur = (np.arange(d-1, i)).astype(np.int64)
             y1 = im[longueur, pix_isat]
 
             # selection des pixels non eratics et var/flux ok
@@ -269,7 +203,6 @@ def FitCosmic(image, indSat, d, chemin_alpha, sat, framesat, CR_VARJ, CR_VMRJ, C
             med2 = med[:, np.newaxis]
             med2 = np.repeat(med2, np.shape(y)[1], axis=1)
             mad = np.median(np.absolute(y - med2), axis=1)
-            # print(i, pix[:, 0],np.shape(madLim),np.shape(mad),np.shape(med))
             madLim[pix[:, 0]] = med + CR_THRJ * mad
             Med[pix[:, 0]] = med
 
@@ -287,13 +220,12 @@ def FitCosmic(image, indSat, d, chemin_alpha, sat, framesat, CR_VARJ, CR_VMRJ, C
             val = uniq[np.argwhere(u == 1)]
             
             uni = np.argwhere(p == val)
-            # start = np.argwhere(t != 0) #pas le premier impacté par cosmic
 
             if np.shape(uni)[0] != 0:
 
-                un = uni[:, 1]  # np.intersect1d(uni[:, 1], start[:, 0])
+                un = uni[:, 1]
                 cr = cr[un]
-                tps = cr[:, 1] + d
+                tps = cr[:, 1] + d - 1
                 p = cr[:, 0]
                 pixel = pix[p]
 
@@ -310,17 +242,13 @@ def FitCosmic(image, indSat, d, chemin_alpha, sat, framesat, CR_VARJ, CR_VMRJ, C
                 for c in range(0, len(tps)):
                     med = np.nanmedian(im[:, pixel[c, 0]])
                     if med == 0: med = 1
-
                     l = round(im[tps[c], pixel[c, 0]] / med)
-
+                    FRN_MAXFIT = i
+                    FRN1       = d
                     yf = im[longueur, pixel[c, 0]]
-
                     Al = alpha[pixel[c, 0]]
-                    Nc = i - d + 1
-                    FRNmaxfit = i + 1 
-                    FRN1      = d
-                    #A = (Al / 2) * ((N ** 2) + 2 * N * l - N - 2 * l * tps[c])
-                    A = (Al / 2) * ( Nc**2 - Nc + 2*Nc*l -2.*tps[c]*l )
+                    Nc = FRN_MAXFIT - FRN1 + 1
+                    A = (Al / 2) * (FRN_MAXFIT**2 - FRN_MAXFIT + 2.*FRN_MAXFIT*l -2.*(tps[c]+1-FRN1+1)*l - FRN1**2 - FRN1)
                     B = Nc - 1
                     C = - np.sum(yf) + im[tps[c], pixel[c, 0]]
                     delta = B * B - 4 * A * C
@@ -329,8 +257,8 @@ def FitCosmic(image, indSat, d, chemin_alpha, sat, framesat, CR_VARJ, CR_VMRJ, C
 
                     A1 = Al * (a0[c] ** 2)
                     A1 = np.repeat(A1, len(longueur))
-                    Ek = yf - A1 * longueur
-                    er[c] = np.var(Ek) / ((tps[c] - 1 - d + 1) + (i - (tps[c] + 1) + 1))
+                    Ek = yf - A1 * (longueur+1)
+                    er[c] = np.var(np.delete(Ek,tps[c]+1-FRN1)) / (FRN_MAXFIT - FRN1)
                     Nbfit[c] = Nc - 1
                     
                     Ac[pixel[c, 0]]  = A
@@ -342,12 +270,13 @@ def FitCosmic(image, indSat, d, chemin_alpha, sat, framesat, CR_VARJ, CR_VMRJ, C
                 varO[pixel[:, 0]] = er
                 POM_NBF_FIT[pixel[:, 0]] = Nbfit
 
+
             yfit = im[longueur, pix_isat]
             Alpha = alpha[pix_isat]
 
             A = Alpha[:, 0] * ((d + i) / 2)
             B = 1
-            C = - np.sum((yfit), axis=1) / (i - d + 1)
+            C = - np.sum(yfit, axis=1) / (i - d + 1)
 
             delta = B * B - 4 * A * C
             
@@ -367,10 +296,9 @@ def FitCosmic(image, indSat, d, chemin_alpha, sat, framesat, CR_VARJ, CR_VMRJ, C
             varO[pix_isat[:, 0]] = er
             POM_NBF_FIT[pix_isat[:, 0]] = i - d + 1
 
-            # print(i,len(pix_isat[:, 0]),POM_NBF_FIT[pix_isat[:, 0]])
 
-
-        elif i>0: # cas ou l'on a pas assez de points pour faire un calcul mais plus d'une frame à disposition
+        
+        elif i>=0: # cas ou l'on a pas assez de points pour faire un calcul mais plus d'une frame à disposition
             pix_isat = np.intersect1d(np.argwhere(indSat == i), PixaTraiter)
             a = framesat[pix_isat]
             pix_isat = pix_isat[:, np.newaxis]
@@ -379,25 +307,23 @@ def FitCosmic(image, indSat, d, chemin_alpha, sat, framesat, CR_VARJ, CR_VMRJ, C
             Stdev = 0.5 * sat[pix_isat] / (framesat[pix_isat]**2 - framesat[pix_isat])
             varO[pix_isat[:, 0]] = np.transpose(Stdev)**2
             POM_NBF_FIT[pix_isat[:, 0]] = a
-            
             Ac[pix_isat[:,0]] = np.nan
             Bc[pix_isat[:,0]] = np.nan
             Cc[pix_isat[:,0]] = np.nan
             Ncc[pix_isat[:,0]] = a
-            
-        else: # cas où il n'y a qu'une seule frame pour faire le calcul (saturation dès la première frame)
-            pix_isat = np.intersect1d(np.argwhere(indSat == i), PixaTraiter)
-            pix_isat = pix_isat[:, np.newaxis]
-            S_adu = 2 * sat[pix_isat]
-            F[:, pix_isat[:, 0]] = np.transpose(S_adu)
-            varO[pix_isat[:, 0]] = np.transpose(sat[pix_isat])**2
 
-            POM_NBF_FIT[pix_isat[:, 0]] = 1
+    pix_isat = np.intersect1d(np.argwhere(framesat == 1), PixaTraiter) # cas où il n'y a qu'une seule frame pour faire le calcul (saturation dès la première frame)
+    # pix_isat = np.intersect1d(np.argwhere(indSat == i), PixaTraiter)
+    pix_isat = pix_isat[:, np.newaxis]
+    S_adu = 2 * sat[pix_isat]
+    F[:, pix_isat[:, 0]] = np.transpose(S_adu)
+    varO[pix_isat[:, 0]] = np.transpose(sat[pix_isat])**2
+    POM_NBF_FIT[pix_isat[:, 0]] = 1
 
-            Ac[pix_isat[:,0]] = np.nan
-            Bc[pix_isat[:,0]] = np.nan
-            Cc[pix_isat[:,0]] = np.nan
-            Ncc[pix_isat[:,0]] = 1
+    Ac[pix_isat[:,0]] = np.nan
+    Bc[pix_isat[:,0]] = np.nan
+    Cc[pix_isat[:,0]] = np.nan
+    Ncc[pix_isat[:,0]] = 1
     
     B = F[0, :]
     varFlux = varO
