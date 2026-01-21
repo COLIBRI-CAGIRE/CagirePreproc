@@ -358,14 +358,16 @@ def CorrectifPersistance(PIM_FRN_SAT, N, DT, amp_1, amp_2, tau_1, tau_2, P_LEVEL
 
 
 def SaveFit(image, nombreFrame, noms_entete, nom_fit, HEAD, Commentaire,overwrite=True):
-    hdr = fits.Header()
+    #hdr = fits.Header()
+    
+    hdr = fits.open(Commentaire)[0].header
+
     hdr[HEAD] = Commentaire
     primary = fits.PrimaryHDU(header=hdr)
 
-    image_hdu = fits.ImageHDU(image[0], name=noms_entete[0])
+    image_hdu = fits.ImageHDU(image[0], name=noms_entete[0], header=hdr)
     hdul = fits.HDUList([primary, image_hdu])
-    hdr = hdul[1].header
-    hdr.append('measure')
+    #hdul[1].header.append('measure')
     hdul[1].header['measure'] = noms_entete[0]
 
     n = np.shape(image)[0]

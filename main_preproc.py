@@ -10,8 +10,8 @@ import pandas as pd
 from tools_preproc import *
 from tabulate import tabulate
 
-
-
+_, input_file = sys.argv
+print(input_file)
 parameters = {'axes.labelsize': 18, 'axes.titlesize': 20, 'xtick.labelsize': 18, 'ytick.labelsize': 18}
 plt.rcParams.update(parameters)
 
@@ -19,8 +19,7 @@ map_path    = './maps/Julia/'
 input_path  = './input/'
 output_path = './output/'
 
-input_file  = 'RAW_RAMP_NAME.fits'
-output_file = 'PROCESSED_RAMP_NAME'
+output_file = input_file[:-5]+'_PROCESSED'
 
 
 # Set parameters
@@ -44,7 +43,7 @@ PIM_REAL_NONLIN  = np.ravel(fits.getdata(map_path+'PIM_REAL_NONLIN.fits'))
 
 PIM_REAL_SIGFLU = np.nan
 
-PIM_PR_SAT  = fits.open('./maps/carte_persistance.fits')
+PIM_PR_SAT  = fits.open('./maps/carte_persistance.fits')    
 PIM_PR_SAT  = np.ravel(PIM_PR_SAT[1].data)
 PIM_PR_SATB = np.argwhere(PIM_PR_SAT > 0)
 
